@@ -7,7 +7,9 @@
     "test": "node --import tsx --test test/**/*.test.ts",
     "test:watch": "node --import tsx --test --watch test/**/*.test.ts",
     "validate:sandbox": "node --import tsx scripts/validate-sandbox.ts",
-    "evaluate:compaction": "node --import tsx scripts/evaluate-compaction.ts"
+    "validate:long-session": "node --import tsx scripts/validate-long-session.ts",
+    "evaluate:compaction": "node --import tsx scripts/evaluate-compaction.ts",
+    "setup:test-env": "node --import tsx scripts/setup-test-env.ts"
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.3.6",
