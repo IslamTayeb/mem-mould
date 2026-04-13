@@ -273,13 +273,22 @@ function SidebarView(props: { api: TuiPluginApi; sessionID: string }) {
   const blobs = createMemo(() => orderedBlobs(map()));
   const barW = 34; // fits 37-char sidebar content width
 
-  return (
-    <Show when={map() && blobs().length > 0}>
-      <box flexDirection="column" gap={1}>
-        <text fg={props.api.theme.current.text}>
-          <b>Mem Map</b>
-        </text>
+  const debugInfo = createMemo(() => {
+    const m = map();
+    if (!m) return "map: null";
+    return `${m.blobOrder.length} blobs, ${Object.keys(m.messages).length} msgs`;
+  });
 
+  return (
+    <box flexDirection="column" gap={1}>
+      <text fg={props.api.theme.current.text}>
+        <b>Mem Map</b> {debugInfo()}
+      </text>
+      <text fg={props.api.theme.current.textMuted}>
+        sid: {props.sessionID.slice(0, 20)}
+      </text>
+
+      <Show when={map() && blobs().length > 0}>
         {/* Post-transform context bar */}
         <Show when={preview()}>
           <box flexDirection="column">
@@ -325,12 +334,12 @@ function SidebarView(props: { api: TuiPluginApi; sessionID: string }) {
             </text>
           </box>
         </Show>
+      </Show>
 
-        <text fg={props.api.theme.current.textMuted}>
-          {props.api.keybind.print("plugin.mem_map_open")} open
-        </text>
-      </box>
-    </Show>
+      <text fg={props.api.theme.current.textMuted}>
+        {props.api.keybind.print("plugin.mem_map_open")} open
+      </text>
+    </box>
   );
 }
 
@@ -525,6 +534,17 @@ function MemMapDialog(props: {
 
   const t = () => props.api.theme.current;
 
+  // Compute effective tokens for a blob at its current fidelity
+  const preview = createMemo(() => {
+    const m = map();
+    return m ? computeContextPreview(m) : undefined;
+  });
+  const effectiveTok = (blobID: string) => {
+    const p = preview();
+    if (!p) return 0;
+    return p.blobs.find((b) => b.id === blobID)?.effectiveTokens ?? 0;
+  };
+
   return (
     <box
       flexDirection="column"
@@ -603,9 +623,12 @@ function MemMapDialog(props: {
                         </span>{" "}
                         {blob.label}{" "}
                         <span style={{ fg: t().textMuted }}>
-                          ~{blob.tokenEstimate.toLocaleString()} tok{" "}
+                          ~{formatTokens(effectiveTok(blob.id))} tok{" "}
                           {blob.messageIDs.length} msgs{" "}
-                          {relTime(blob.lastActiveAt)}
+                          {relTime(blob.lastActiveAt)}{" "}
+                          {blob.fidelity !== "full"
+                            ? `(${formatTokens(blob.tokenEstimate)} raw)`
+                            : ""}
                         </span>
                       </text>
                       <text fg={t().textMuted}> {blob.placeholder}</text>
@@ -1006,6 +1029,8 @@ async function runBlame(
 // ── Plugin entry ──────────────────────────────────────────────────────
 
 const tui: TuiPlugin = async (api) => {
+  api.ui.toast({ variant: "info", message: "mem-mould TUI plugin loaded" });
+
   const keys: TuiKeybindSet = api.keybind.create({
     plugin_mem_map_open: "<leader>'",
   });
