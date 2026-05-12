@@ -964,6 +964,25 @@ async function buildOpenCodeEnv(input: {
   const agentConfig: Record<string, Record<string, unknown>> = {};
   if (input.childModelSlug)
     agentConfig.general = { model: input.childModelSlug };
+  agentConfig.transcript = {
+    mode: "subagent",
+    description:
+      "Transcript provenance investigator. Use this agent when the parent asks for glob, grep, and read over prior transcript files.",
+    ...(input.childModelSlug ? { model: input.childModelSlug } : {}),
+    permission: {
+      glob: "allow",
+      grep: "allow",
+      read: "allow",
+      bash: "deny",
+      task: "deny",
+      todowrite: "deny",
+      session_lookup: "deny",
+      session_detail: "deny",
+      message_detail: "deny",
+      session_tree: "deny",
+      blame_lookup: "deny",
+    },
+  };
   if (input.plugin) {
     agentConfig.memmould = {
       mode: "subagent",
@@ -1238,11 +1257,12 @@ function buildPromptForCondition(
   if (condition === "subagent-searchable-transcript") {
     return {
       system:
-        "Answer with compact JSON only. Use the Task tool exactly once. The child must use only glob, grep, and read over transcript files before returning evidence. Do not ask the child to use bash or mem-mould/session tools.",
+        "Answer with compact JSON only. Use the Task tool exactly once with subagent_type='transcript'. The child must use only glob, grep, and read over transcript files before returning evidence. Do not ask the child to use bash or mem-mould/session tools.",
       tools: { task: true },
       text: [
         `Transcript directory: ${transcriptDir}`,
         `Question: ${fixture.question}`,
+        "Task instruction: call subagent_type='transcript', not general or explore.",
         `Ask the child to ignore distractors: ${distractorTitles}`,
         answerContract,
       ].join("\n"),
