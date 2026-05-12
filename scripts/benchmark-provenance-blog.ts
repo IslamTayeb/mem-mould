@@ -283,7 +283,8 @@ const fixtures: Fixture[] = [
         patterns: [
           /after (splitting|split|tokenization|tokenizing)/i,
           /split first/i,
-          /tokeni[sz](e|ing) first/i,
+          /tokeni[sz](e|es|ing) first/i,
+          /then trim(s|med)?/i,
           /trim(ming)? afterward/i,
         ],
       },
@@ -1428,6 +1429,7 @@ function buildStats(input: {
 }): RunStats {
   const outputText = messageText(latestAssistantMessage(input.messages));
   const correctnessText = answerCorrectnessText(outputText);
+  const forbiddenText = answerForbiddenText(outputText);
   const requiredHits = input.fixture.required
     .filter((item) =>
       item.patterns.some((pattern) => pattern.test(correctnessText)),
@@ -1436,7 +1438,7 @@ function buildStats(input: {
   const missingRequired = input.fixture.required
     .filter((item) => !requiredHits.includes(item.id))
     .map((item) => item.id);
-  const forbiddenHits = termsInText(input.fixture.forbidden, correctnessText);
+  const forbiddenHits = termsInText(input.fixture.forbidden, forbiddenText);
   const citationHits = citationMatches(outputText, input.seeded, input.fixture);
   const childFlatMessages = input.childMessages.flatMap(
     (item) => item.messages,
@@ -1609,6 +1611,12 @@ function answerCorrectnessText(outputText: string) {
   return [parsed.answer, parsed.rationale, parsed.why_not_global_mutex]
     .filter((item): item is string => typeof item === "string")
     .join("\n");
+}
+
+function answerForbiddenText(outputText: string) {
+  const parsed = parseAnswer(outputText);
+  if (!parsed) return outputText;
+  return typeof parsed.answer === "string" ? parsed.answer : outputText;
 }
 
 function parseAnswer(outputText: string) {
