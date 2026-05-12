@@ -11,7 +11,10 @@
     "evaluate:compaction": "node --import tsx scripts/evaluate-compaction.ts",
     "generate:fixtures": "node --import tsx scripts/generate-test-fixtures.ts",
     "setup:test-env": "node --import tsx scripts/setup-test-env.ts",
-    "inspect": "node --import tsx scripts/inspect-context.ts"
+    "inspect": "node --import tsx scripts/inspect-context.ts",
+    "benchmark:swebench-context": "node --import tsx scripts/benchmark-swebench-context.ts",
+    "benchmark:context-canaries": "node --import tsx scripts/benchmark-context-canaries.ts",
+    "benchmark:provenance-qa": "node --import tsx scripts/benchmark-provenance-qa.ts"
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.3.6",

@@ -165,6 +165,10 @@ function buildSyntheticMap(): ContextMapFile {
       placeholderIncludesKeyFacts: true,
       placeholderIncludesKeyFactsSource: "user",
       toolHistoryCleanup: true,
+      stablePlaceholders: false,
+      stablePlaceholdersSource: "default",
+      stableAnchors: false,
+      stableAnchorsSource: "default",
     },
     blobOrder: ["auth_debugging", "docs_chatter", "refactor_queue_helper"],
     blobs: {

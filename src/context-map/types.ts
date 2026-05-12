@@ -85,6 +85,10 @@ export type ContextMapSettings = {
   placeholderIncludesKeyFacts: boolean;
   placeholderIncludesKeyFactsSource: ControlSource;
   toolHistoryCleanup: boolean;
+  stablePlaceholders: boolean;
+  stablePlaceholdersSource: ControlSource;
+  stableAnchors: boolean;
+  stableAnchorsSource: ControlSource;
 };
 
 export type PendingRetroactiveMessage = {

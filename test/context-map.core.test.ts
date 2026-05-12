@@ -7,6 +7,7 @@ import {
   buildBlobMessageSummaries,
   buildFallbackMapFromMessages,
   buildHistoricalOverview,
+  buildPlaceholderText,
   buildMessageDetail,
   capturePendingRetroactiveMessage,
   parseAnnotationBlock,
@@ -290,6 +291,7 @@ test("buildFallbackMapFromMessages creates reusable blobs for repeated topics", 
   assert.equal(map.blobOrder.length, 2);
   assert.equal(map.blobs[map.blobOrder[0]!]!.messageIDs.length, 4);
   assert.equal(map.blobs[map.blobOrder[1]!]!.messageIDs.length, 2);
+  assert.equal(map.blobs[map.blobOrder[0]!]!.fidelity, "full");
 });
 
 test("buildFallbackMapFromMessages honors explicit topic switches", () => {
@@ -546,6 +548,76 @@ test("resetMapAfterCompaction removes old blobs from the live map", () => {
   assert.equal(reset.compaction?.archivePath, "/tmp/archive.json");
   assert.equal(reset.blobs.session_summary?.fidelity, "summary");
   assert.equal(reset.messages["cmp-assistant"]?.blobID, "session_summary");
+});
+
+test("resetMapAfterCompaction placeholders all-historical summaries", () => {
+  const map = createEmptyContextMap({ sessionID: "ses-test" });
+  map.blobs.auth_history = {
+    id: "auth_history",
+    label: "auth_history",
+    summary: "Old auth work that should not remain the current goal.",
+    placeholder: "Old auth work",
+    keyFacts: [],
+    fidelity: "drop",
+    fidelitySource: "agent",
+    messageIDs: ["old-user"],
+    tokenEstimate: 100,
+    createdAt: 1,
+    lastActiveAt: 1,
+    commitHashes: [],
+  };
+  map.blobs.docs_history = {
+    id: "docs_history",
+    label: "docs_history",
+    summary: "Old docs work.",
+    placeholder: "Old docs work",
+    keyFacts: [],
+    fidelity: "placeholder",
+    fidelitySource: "agent",
+    messageIDs: ["old-assistant"],
+    tokenEstimate: 20,
+    createdAt: 2,
+    lastActiveAt: 2,
+    commitHashes: [],
+  };
+  map.blobOrder.push("auth_history", "docs_history");
+
+  const reset = resetMapAfterCompaction({
+    map,
+    summaryText: "## Goal\nContinue the auth rate limiter race.",
+    summaryMessageID: "cmp-assistant",
+    compactedAt: 10,
+  });
+
+  assert.equal(reset.blobs.session_summary?.fidelity, "placeholder");
+  assert.equal(
+    reset.blobs.session_summary?.placeholder,
+    "Historical context compacted",
+  );
+});
+
+test("buildPlaceholderText supports stable cache-friendly placeholders", () => {
+  const map = createEmptyContextMap({ sessionID: "ses-test" });
+  map.settings.stablePlaceholders = true;
+  const blob = {
+    id: "auth_history",
+    label: "auth_history",
+    summary: "Old auth work.",
+    placeholder: "Old auth work",
+    keyFacts: ["mutex failed"],
+    fidelity: "placeholder" as const,
+    fidelitySource: "system" as const,
+    messageIDs: [],
+    tokenEstimate: 1234,
+    createdAt: 1,
+    lastActiveAt: 1,
+    commitHashes: [],
+  };
+
+  assert.equal(
+    buildPlaceholderText(map, blob),
+    "[Context hidden: auth_history]",
+  );
 });
 
 test("transformMessagesForContext drops pre-compaction messages after reset", () => {

@@ -181,16 +181,22 @@ export function resetMapAfterCompaction(input: {
   compactedAt?: number;
   includeMessageID?: string;
   archivePath?: string;
+  summaryFidelity?: BlobFidelity;
 }): ContextMapFile {
   const compactedAt = input.compactedAt ?? Date.now();
   const summaryText = input.summaryText.trim() || "Conversation compacted.";
   const summaryBlobID = COMPACTION_SUMMARY_BLOB_ID;
+  const summaryFidelity =
+    input.summaryFidelity ?? defaultCompactionSummaryFidelity(input.map);
   const blob = createBlobEntry({
     id: summaryBlobID,
     label: summaryBlobID,
     summary: summaryText,
-    placeholder: trimText(summaryText, 80),
-    fidelity: "summary",
+    placeholder:
+      summaryFidelity === "placeholder"
+        ? "Historical context compacted"
+        : trimText(summaryText, 80),
+    fidelity: summaryFidelity,
     fidelitySource: "system",
     createdAt: compactedAt,
     lastActiveAt: compactedAt,
@@ -229,6 +235,15 @@ export function resetMapAfterCompaction(input: {
   };
   rebuildTotals(next);
   return next;
+}
+
+function defaultCompactionSummaryFidelity(map: ContextMapFile): BlobFidelity {
+  if (map.blobOrder.length === 0) return "summary";
+  const allHistorical = map.blobOrder.every((id) => {
+    const fidelity = map.blobs[id]?.fidelity;
+    return fidelity === "drop" || fidelity === "placeholder";
+  });
+  return allHistorical ? "placeholder" : "summary";
 }
 
 export function extractToolNames(parts: MessageLike["parts"]) {
@@ -889,6 +904,7 @@ export function updateMessageControls(input: {
 }
 
 export function buildPlaceholderText(map: ContextMapFile, blob: BlobEntry) {
+  if (map.settings.stablePlaceholders) return `[Context hidden: ${blob.label}]`;
   const head = `[${blob.label} - ~${blob.tokenEstimate.toLocaleString()} tok: ${blob.placeholder}]`;
   if (!map.settings.placeholderIncludesKeyFacts || blob.keyFacts.length === 0)
     return head;
@@ -959,7 +975,17 @@ function cleanupToolParts(map: ContextMapFile, parts: MessageLike["parts"]) {
   });
 }
 
-function chooseBlobAnchorIndex(messages: MessageLike[], indexes: number[]) {
+function chooseBlobAnchorIndex(
+  messages: MessageLike[],
+  indexes: number[],
+  stableAnchors: boolean,
+) {
+  if (stableAnchors) {
+    return (
+      indexes.find((index) => messages[index]?.info.role === "assistant") ??
+      indexes[0]!
+    );
+  }
   const assistantIndex = [...indexes]
     .reverse()
     .find((index) => messages[index]?.info.role === "assistant");
@@ -988,7 +1014,11 @@ export function transformMessagesForContext(
   for (const [blobID, indexes] of blobIndexes) {
     anchorIndexByBlob.set(
       blobID,
-      chooseBlobAnchorIndex(activeMessages, indexes),
+      chooseBlobAnchorIndex(
+        activeMessages,
+        indexes,
+        map.settings.stableAnchors,
+      ),
     );
   }
 
@@ -1103,7 +1133,7 @@ export function buildPluginGuidanceSystemPrompt(map: ContextMapFile) {
   const lines = [
     "Context map plugin is active.",
     "User controls are authoritative: do not override user-set fidelity or hidden-message choices unless the user explicitly asks.",
-    "Available tools: view_context (see blobs and fidelity), set_fidelity (change detail level for a blob), session_lookup + session_detail + message_detail (progressively inspect past sessions), blame_lookup (find which session produced code).",
+    "Available tools: view_context (see blobs and fidelity), set_fidelity (change detail level for a blob), session_tree (inspect parent/sub-agent lineage), session_lookup + session_detail + message_detail (progressively inspect past sessions), blame_lookup (find which session produced code).",
     "Historical investigation flow: use blame_lookup or session_lookup to find an OpenCode session; read the compressed summaries in overview.blobs; call session_detail with detail='messages' for per-message summaries in a chosen blob; call message_detail for one full message only when necessary.",
     "Cache-aware context management: changing fidelity reshapes the next prompt and can reduce provider prompt-cache hits for unchanged later messages. Avoid small or frequent context edits. Use set_fidelity when an older blob is clearly stale or large enough that dropping/summarizing it is worth the one-time cache disruption.",
   ];
@@ -1429,6 +1459,10 @@ export function buildFallbackMapFromMessages(input: {
       placeholderIncludesKeyFacts: true,
       placeholderIncludesKeyFactsSource: "system",
       toolHistoryCleanup: true,
+      stablePlaceholders: false,
+      stablePlaceholdersSource: "default",
+      stableAnchors: false,
+      stableAnchorsSource: "default",
     },
     blobOrder: [],
     blobs: {},
@@ -1454,7 +1488,7 @@ export function buildFallbackMapFromMessages(input: {
           summary,
           placeholder: trimText(summary, 80),
           createdAt: getMessageCreatedAt(message),
-          fidelity: "placeholder",
+          fidelity: "full",
           fidelitySource: "system",
         });
         map.blobOrder.push(currentBlobID);

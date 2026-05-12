@@ -53,6 +53,24 @@ function tracePayloadEnabled() {
   );
 }
 
+function envFlag(name: string) {
+  return ["1", "true", "yes", "on"].includes(
+    (process.env[name] ?? "").toLowerCase(),
+  );
+}
+
+function cacheStableModeEnabled() {
+  return envFlag("MEM_MOULD_CACHE_STABLE");
+}
+
+function staticPluginGuidanceSystemPrompt() {
+  return [
+    "Context map plugin is active.",
+    "Use view_context and set_fidelity only when older context is clearly stale or large enough to justify reshaping the prompt.",
+    "User controls are authoritative: do not override user-set fidelity or hidden-message choices unless the user explicitly asks.",
+  ].join("\n");
+}
+
 function partPayloadSnapshot(part: MessageLike["parts"][number]) {
   const base = {
     id: part.id,
@@ -143,6 +161,15 @@ const server: Plugin = async (ctx) => {
     );
   }
 
+  async function getChildSessions(sessionID: string) {
+    return responseData<SessionLike[]>(
+      ctx.client.session.children({
+        path: { id: sessionID },
+        query: { directory: ctx.directory },
+      } as never),
+    ).catch(() => []);
+  }
+
   async function getMessages(sessionID: string, limit = 5000) {
     const rows = await responseData<MessageLike[]>(
       ctx.client.session.messages({
@@ -222,6 +249,9 @@ const server: Plugin = async (ctx) => {
       compactedAt,
       includeMessageID: input.includeMessageID,
       archivePath,
+      summaryFidelity: envFlag("MEM_MOULD_TASK_BOUNDARY")
+        ? "placeholder"
+        : undefined,
     });
     await writeContextMap(reset);
     const preview = computeContextPreview(reset);
@@ -245,11 +275,20 @@ const server: Plugin = async (ctx) => {
   }
 
   async function getMap(sessionID: string, directory?: string) {
-    return readContextMap({
+    const map = await readContextMap({
       sessionID,
       directory: directory ?? ctx.directory,
       worktree: ctx.worktree,
     });
+    if (cacheStableModeEnabled() || envFlag("MEM_MOULD_STABLE_PLACEHOLDERS")) {
+      map.settings.stablePlaceholders = true;
+      map.settings.stablePlaceholdersSource = "system";
+    }
+    if (cacheStableModeEnabled() || envFlag("MEM_MOULD_STABLE_ANCHORS")) {
+      map.settings.stableAnchors = true;
+      map.settings.stableAnchorsSource = "system";
+    }
+    return map;
   }
 
   async function ensureHistoricalMap(sessionID: string) {
@@ -327,6 +366,65 @@ const server: Plugin = async (ctx) => {
     }
 
     return results;
+  }
+
+  async function sessionTree(
+    sessionID: string,
+    depth: number,
+  ): Promise<Record<string, unknown>> {
+    const session = await getSession(sessionID);
+    const { map } = await ensureHistoricalMap(sessionID);
+    const messages = await getMessages(sessionID).catch(() => []);
+    const children = depth > 0 ? await getChildSessions(sessionID) : [];
+    const childNodes = [];
+    for (const child of children) {
+      childNodes.push(await sessionTree(child.id, depth - 1));
+    }
+
+    return {
+      session_id: session.id,
+      title: session.title ?? session.id,
+      parent_id: session.parentID,
+      updated_at: session.time?.updated,
+      blob_count: map.blobOrder.length,
+      blobs: buildHistoricalOverview({ map, session }).blobs.map((blob) => ({
+        id: blob.id,
+        label: blob.label,
+        compressed_summary: blob.compressedSummary,
+        message_count: blob.messageCount,
+        key_facts: blob.keyFacts,
+      })),
+      task_links: extractTaskLinks(messages),
+      children: childNodes,
+    };
+  }
+
+  function extractTaskLinks(messages: MessageLike[]) {
+    return messages.flatMap((message) =>
+      message.parts
+        .filter((part) => part.type === "tool" && part.tool === "task")
+        .map((part) => {
+          const output =
+            typeof part.state?.output === "string" ? part.state.output : "";
+          const outputSessionID = output.match(/task_id:\s*(\S+)/)?.[1];
+          return {
+            message_id: message.info.id,
+            tool_call_id: part.callID,
+            description:
+              typeof part.state?.input?.description === "string"
+                ? part.state.input.description
+                : undefined,
+            subagent_type:
+              typeof part.state?.input?.subagent_type === "string"
+                ? part.state.input.subagent_type
+                : undefined,
+            child_session_id:
+              typeof part.state?.metadata?.sessionId === "string"
+                ? part.state.metadata.sessionId
+                : outputSessionID,
+          };
+        }),
+    );
   }
 
   async function blameLookup(file: string, line: number) {
@@ -511,6 +609,40 @@ const server: Plugin = async (ctx) => {
           );
         },
       }),
+      session_tree: tool({
+        description:
+          "Inspect parent/sub-agent session lineage as a low-fidelity tree with child task links and blob summaries",
+        args: {
+          session_id: tool.schema
+            .string()
+            .optional()
+            .describe("Root session ID. Defaults to the current session."),
+          depth: tool.schema
+            .number()
+            .int()
+            .min(0)
+            .max(3)
+            .optional()
+            .describe("How many child-session levels to include"),
+        },
+        async execute(args, toolCtx) {
+          const rootSessionID = args.session_id ?? toolCtx.sessionID;
+          toolCtx.metadata({ title: `Session tree: ${rootSessionID}` });
+          return JSON.stringify(
+            {
+              root_session_id: rootSessionID,
+              depth: args.depth ?? 1,
+              tree: await sessionTree(rootSessionID, args.depth ?? 1),
+              next_steps: [
+                "Use session_detail on a promising blob for message summaries.",
+                "Use message_detail for one exact message or tool call only when needed.",
+              ],
+            },
+            null,
+            2,
+          );
+        },
+      }),
       session_detail: tool({
         description:
           "Get progressive detail from a past session blob: compressed summary, message summaries, or full blob transcript",
@@ -628,18 +760,23 @@ const server: Plugin = async (ctx) => {
       const messages = await getMessages(input.sessionID);
       const toolMessage = findMessageForToolCall(messages, input.callID);
       if (!toolMessage || toolMessage.info.role !== "assistant") return;
+      const currentMap = await getMap(input.sessionID);
+      const activeMessages = filterMessagesForActiveContext(
+        currentMap,
+        messages,
+        { includeSummary: false },
+      );
 
       const fallback = buildFallbackMapFromMessages({
         sessionID: input.sessionID,
         directory: ctx.directory,
         worktree: ctx.worktree,
-        messages,
+        messages: activeMessages,
       });
       const suggestedBlobID = fallback.messages[toolMessage.info.id]?.blobID;
-      const currentMap = await getMap(input.sessionID);
       const map = capturePendingRetroactiveMessage({
         map: mergeContextMaps(currentMap, fallback),
-        messages,
+        messages: activeMessages,
         messageID: toolMessage.info.id,
         suggestedBlobID,
       });
@@ -663,16 +800,28 @@ const server: Plugin = async (ctx) => {
         return;
       }
       const guidance = buildPluginGuidanceSystemPrompt(map);
-      const annotation = buildAnnotationSystemPrompt(map);
-      output.system.unshift(guidance);
-      output.system.unshift(annotation);
+      const cacheStable = cacheStableModeEnabled();
+      const annotation = cacheStable
+        ? undefined
+        : buildAnnotationSystemPrompt(map);
+      output.system.unshift(
+        cacheStable ? staticPluginGuidanceSystemPrompt() : guidance,
+      );
+      if (annotation) output.system.unshift(annotation);
 
       await appendTrace(input.sessionID, "system.transform", {
+        cache_stable: cacheStable,
         blob_count: map.blobOrder.length,
         total_tokens: map.totalTokenEstimate,
-        guidance_length: guidance.length,
-        annotation_prompt_length: annotation.length,
-        guidance_preview: guidance.slice(0, 300),
+        guidance_length: (cacheStable
+          ? staticPluginGuidanceSystemPrompt()
+          : guidance
+        ).length,
+        annotation_prompt_length: annotation?.length ?? 0,
+        guidance_preview: (cacheStable
+          ? staticPluginGuidanceSystemPrompt()
+          : guidance
+        ).slice(0, 300),
         ...(tracePayloadEnabled()
           ? {
               system_prompts: output.system.map((text, index) => ({
@@ -755,10 +904,13 @@ const server: Plugin = async (ctx) => {
       output.text = parsed.cleanText;
       const messages = await getMessages(input.sessionID);
       let map = await getMap(input.sessionID);
+      const activeMessages = filterMessagesForActiveContext(map, messages, {
+        includeSummary: false,
+      });
       if (parsed.annotation) {
         map = applyAnnotationEnvelope({
           map,
-          messages,
+          messages: activeMessages,
           assistantMessageID: input.messageID,
           annotation: parsed.annotation,
         });
@@ -767,7 +919,7 @@ const server: Plugin = async (ctx) => {
           sessionID: input.sessionID,
           directory: ctx.directory,
           worktree: ctx.worktree,
-          messages,
+          messages: activeMessages,
         });
         map = mergeContextMaps(map, fallback);
         for (const messageID of Object.keys(map.pendingRetroactive)) {

@@ -205,6 +205,9 @@ cython_debug/
 node_modules/
 coverage/
 *.tsbuildinfo
+benchmarks/swebench-context/runs/
+benchmarks/context-canaries/runs/
+benchmarks/provenance-qa/runs/
 
 # Marimo
 marimo/_static/
