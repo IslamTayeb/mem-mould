@@ -67,6 +67,7 @@ The analyzer also records:
 - Final GPT-5.5 full matrix: `benchmarks/provenance-qa/runs/gpt55-blog-full-matrix-final`.
 - GPT-5.5 parent + GPT-5.4 mini child sub-agent comparison: `benchmarks/provenance-qa/runs/gpt55-parent-gpt54mini-child-subagents`.
 - `openai/gpt-5.5-mini` was not available in the tested OpenAI/OpenCode model list; `openai/gpt-5.4-mini` was the available mini baseline.
+- Cost is not directly measured for these OpenAI subscription-auth runs; OpenCode reported `cost: 0`, so analysis should use token/cache metrics unless a separate pricing estimator is added.
 
 ## Interpretation
 
