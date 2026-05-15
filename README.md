@@ -119,7 +119,7 @@ npm run benchmark:swebench-context
 ## Repo Shape
 
 - `src/`: plugin code.
-- `test/`: unit tests.
+- `test/`: fast unit/regression tests.
 - `tools/`: validation, fixture generation, inspection, and artifact export scripts.
 - `benchmarks/`: benchmark harnesses.
 - `artifacts/benchmark-runs/`: curated exported benchmark evidence.
