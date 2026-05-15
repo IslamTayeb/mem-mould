@@ -883,8 +883,6 @@ export function updateMessageControls(input: {
   }
   if (input.fidelityOverride) {
     let normalized = input.fidelityOverride;
-    // Normalize redundant overrides: if the override matches what the blob
-    // already dictates, store "inherit" instead of a no-op explicit value.
     if (normalized !== "inherit") {
       const blob = message.blobID ? input.map.blobs[message.blobID] : undefined;
       if (
@@ -1569,22 +1567,18 @@ function findBestBlobForSummary(map: ContextMapFile, summary: string) {
 }
 
 function labelFromSummary(summary: string, index: number) {
-  // Try to extract a file path as the primary subject
   const fileMatch = summary.match(
     /(?:src|tests|docs|lib|packages)\/[\w./-]+\.[\w]+/,
   );
   if (fileMatch) {
-    // Use the filename without extension as the label base
     const filePath = fileMatch[0];
     const parts = filePath.split("/");
     const filename = parts[parts.length - 1]!.replace(/\.\w+$/, "");
-    // Add parent dir for context if it exists
     const parent = parts.length > 1 ? parts[parts.length - 2] : undefined;
     const label = parent ? `${parent}_${filename}` : filename;
     return label.slice(0, 30);
   }
 
-  // Strip common prompt prefixes to get at the actual subject
   const stripped = summary
     .replace(
       /^(read|write|update|check|explain|look at|search|find|create|fix|debug|trace|review|run|add|remove|show|list|compare|design|implement)\s+/i,
@@ -1656,8 +1650,6 @@ export function summarizeToolState(part: Extract<Part, { type: "tool" }>) {
   }
   return trimText(`Tool ${part.tool}: ${part.state.status}`, 180);
 }
-
-// ── Context preview (for sidebar and debug log) ───────────────────────
 
 export function formatTokens(n: number): string {
   if (n < 1000) return `${n}`;

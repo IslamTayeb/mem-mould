@@ -5,8 +5,9 @@ These benchmarks test mem-mould as a low-fidelity memory and provenance layer fo
 ## Run
 
 ```sh
-MEM_MOULD_E2E_MODEL="openai/gpt-5.5" bun run benchmark:provenance-qa -- --prepare-only
-MEM_MOULD_E2E_MODEL="openai/gpt-5.5" bun run benchmark:provenance-qa
+export MEM_MOULD_E2E_MODEL="<provider>/<model>"
+bun run benchmark:provenance-qa -- --prepare-only
+bun run benchmark:provenance-qa
 ```
 
 Useful options:
@@ -23,9 +24,10 @@ bun run benchmark:provenance-qa -- --out benchmarks/provenance-qa/runs/manual
 `benchmark:provenance-blog` expands the provenance QA idea into a six-fixture, blog-oriented matrix with static `analysis.json`, `analysis.md`, `analysis.csv`, `evidence.md`, and SVG chart artifacts.
 
 ```sh
-MEM_MOULD_E2E_MODEL="openai/gpt-5.5" bun run benchmark:provenance-blog -- --prepare-only
-MEM_MOULD_E2E_MODEL="openai/gpt-5.5" bun run benchmark:provenance-blog -- --conditions rlm-transcript-search,memmould-map-zoom --fixtures auth-queue-rationale
-MEM_MOULD_E2E_MODEL="openai/gpt-5.5" MEM_MOULD_E2E_CHILD_MODEL="openai/gpt-5.4-mini" bun run benchmark:provenance-blog -- --conditions subagent-rlm-transcript-search,subagent-map-zoom
+export MEM_MOULD_E2E_MODEL="<provider>/<model>"
+bun run benchmark:provenance-blog -- --prepare-only
+bun run benchmark:provenance-blog -- --conditions rlm-transcript-search,memmould-map-zoom --fixtures auth-queue-rationale
+MEM_MOULD_E2E_CHILD_MODEL="<provider>/<child-model>" bun run benchmark:provenance-blog -- --conditions subagent-rlm-transcript-search,subagent-map-zoom
 ```
 
 Blog fixtures cover basic rationale lookup, correction chains, false provenance, related-work reuse, sub-agent synthesis, and a `/blame`-style line-to-rationale task. The `/blame` condition only runs for fixtures with an explicit blame target.
@@ -66,11 +68,9 @@ The analyzer also records:
 
 ## Current Blog Artifacts
 
-- Final GPT-5.5 full matrix: `benchmarks/provenance-qa/runs/gpt55-blog-full-matrix-final`.
-- GPT-5.5 parent + GPT-5.4 mini child sub-agent comparison: `benchmarks/provenance-qa/runs/gpt55-parent-gpt54mini-child-subagents-fixed`.
-- GPT-5.5 RLM/hybrid matrix: `benchmarks/provenance-qa/runs/gpt55-rlm-hybrid`.
-- `openai/gpt-5.5-mini` was not available in the tested OpenAI/OpenCode model list; `openai/gpt-5.4-mini` was the available mini baseline.
-- Cost is not directly measured for these OpenAI subscription-auth runs; OpenCode reported `cost: 0`, so analysis should use token/cache metrics unless a separate pricing estimator is added.
+- Use `--out benchmarks/provenance-qa/runs/<run-name>` to name each run explicitly.
+- Child-model comparisons are optional. Set `MEM_MOULD_E2E_CHILD_MODEL` only when you want sub-agents to use a different model than the parent.
+- Cost is provider-dependent. The analyzer records token/cache metrics; add a separate pricing estimator if you need dollar costs.
 
 Safety / validity notes:
 

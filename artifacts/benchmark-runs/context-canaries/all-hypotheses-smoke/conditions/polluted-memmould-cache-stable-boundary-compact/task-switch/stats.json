@@ -1,3 +1,0 @@
-{
-  "error": "AssertionError [ERR_ASSERTION]: provider is not connected in the isolated sandbox: openai\n    at pickModel (./benchmarks/context-canaries/run.ts:674:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async runConditionCanary (./benchmarks/context-canaries/run.ts:326:5)\n    at async main (./benchmarks/context-canaries/run.ts:270:22)"
-}

@@ -7,12 +7,13 @@ import { promisify } from "node:util";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 
-const execFileAsync = promisify(execFile);
+import {
+  parseModelSlug,
+  requiredModelSlug,
+  type ModelRef,
+} from "../../tools/model";
 
-type ModelRef = {
-  providerID: string;
-  modelID: string;
-};
+const execFileAsync = promisify(execFile);
 
 type ConditionID =
   | "full-transcript"
@@ -399,7 +400,7 @@ function parseOptions(): Options {
   return {
     conditions: conditionList,
     outDir: path.resolve(valueArg(args, "--out") ?? defaultOutDir),
-    modelSlug: process.env.MEM_MOULD_E2E_MODEL ?? "openai/gpt-5.5",
+    modelSlug: requiredModelSlug(),
     promptTimeoutMs: timeoutMinutes * 60_000,
     prepareOnly: hasArg(args, "--prepare-only"),
     keepWorktrees: hasArg(args, "--keep-worktrees"),
@@ -424,15 +425,6 @@ function splitList(value: string) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function parseModelSlug(modelSlug: string): ModelRef {
-  const index = modelSlug.indexOf("/");
-  assert.ok(index > 0, `model must be provider/model, got: ${modelSlug}`);
-  return {
-    providerID: modelSlug.slice(0, index),
-    modelID: modelSlug.slice(index + 1),
-  };
 }
 
 async function prepareFixtureRepo(worktree: string) {

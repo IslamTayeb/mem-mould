@@ -1,131 +1,58 @@
 # mem-mould
 
-Context map plugin for [OpenCode](https://opencode.ai). Makes the LLM's context window visible, controllable, and navigable.
+mem-mould is an OpenCode plugin prototype for making an agent's context easier to see, shrink, and revisit.
 
-## What it does
+The simple idea: turn a long chat into a small **context map** of topics. Active work can stay full. Old useful work can become a summary. Noise can be dropped. If the agent needs detail later, it can zoom back into the right topic instead of rereading the whole session.
 
-Every time the agent responds, the plugin silently annotates the response with topic metadata -- which topic ("blob") this message belongs to, a running summary, and key facts. This builds a **context map** in a sideband JSON file, without touching the conversation itself.
+## What Exists
 
-You can then:
-- **See** what's in context (sidebar bar + `/context` dialog)
-- **Control** what stays in context (set topics to Full, Summary, Compressed, Placeholder, or Drop)
-- **Control individual messages** (hide, force full, force summary)
-- **Navigate old sessions** via git blame (`/blame src/auth.ts:42`)
+- A server plugin that builds sideband context maps from normal OpenCode conversations.
+- A TUI plugin with a sidebar, `/context`, and `/blame`.
+- Topic fidelity controls: `Full`, `Summary`, `Compressed`, `Placeholder`, and `Drop`.
+- Message-level controls: hide a message, force it full, or force it summarized.
+- Agent tools for context inspection and historical lookup: `view_context`, `set_fidelity`, `session_lookup`, `session_detail`, `message_detail`, and `blame_lookup`.
+- Sandboxed validation scripts and benchmark harnesses for testing the idea without touching normal OpenCode state.
 
-The agent also has tools to inspect and manage the map itself (`view_context`, `set_fidelity`, `session_lookup`, `session_detail`, `message_detail`, `blame_lookup`), but your choices always take priority over the agent's.
+## Why It Matters
 
-## How it works
+Long-running agent sessions accumulate stale instructions, abandoned attempts, unrelated work, and old tool output. Default compaction helps fit the window, but it does not give the user or agent much control over *which* parts should stay visible.
 
-```
-You send a message
-  -> Plugin injects annotation instructions into system prompt
-  -> Plugin applies your fidelity choices to the message history
-  -> Model responds normally, appends a hidden <annotation> block
-  -> Plugin strips the annotation, saves it to sideband JSON
-  -> You see the clean response
-  -> Sideband map updates (new blob, updated summary, key facts)
+mem-mould treats context like a map:
 
-You open /context
-  -> See topics, token estimates, fidelity levels
-  -> Change fidelity per topic or per message
-  -> Changes take effect on the next model call
-```
+- keep the current task in detail.
+- compress finished work.
+- keep only placeholders for distant topics.
+- drop dead ends.
+- recover old rationale through map-guided zoom or git blame.
 
-## Fidelity levels
+## What We Have Tested
 
-These control how much of a topic the model actually sees:
+- Annotation reliability: assistant turns can produce usable topic metadata without changing the visible conversation.
+- Map navigation: models can choose the right placeholder topic and ask for more detail when needed.
+- Sub-agent lookup: a child agent can inspect a prior session map and bring back focused evidence.
+- Context canaries: mem-mould can remove planted stale context from visible compaction summaries.
+- Provenance QA: mem-mould can route an agent to prior rationale through low-fidelity maps plus selective message zoom.
+- SWE-bench context stress and code-memory benchmarks: current evidence is useful for context hygiene and provenance routing, not a claim of general solve-rate improvement.
 
-| Level | What the model gets | When to use |
-|---|---|---|
-| **Full** | Every message verbatim | Active work |
-| **Summary** | Each message replaced by its one-line summary | Finished work you might reference |
-| **Compressed** | One paragraph for the whole topic | Background context |
-| **Placeholder** | One-line stub + key facts | Distant context, navigable via zoom |
-| **Drop** | Nothing | Dead ends, noise |
+Curated benchmark evidence lives in `artifacts/benchmark-runs/`. Raw local runs stay ignored under `benchmarks/*/runs/`.
 
-Per-message controls:
-- **Auto** (default): follows whatever the topic's fidelity is set to
-- **Full**: always keep this message verbatim regardless of topic fidelity
-- **Summary**: always replace with summary regardless of topic fidelity
-- **Hide**: remove from context entirely
-
-## Quick start
-
-### 1. Set up a test environment
+## Try The Demo
 
 ```sh
+npm install
 npm run setup:test-env
 ```
 
-This creates a disposable demo repo with seeded sessions, commit mappings, and the plugin pre-wired. It prints a launch script path. Run it:
+The setup command prints a launch script for a disposable OpenCode test repo. Run that script, then try:
 
-```sh
-"/path/printed/by/setup/open-test-env.sh"
-```
-
-### 2. Try the basics
-
-Once OpenCode opens:
-
-1. Chat normally for a few turns on different topics
-2. Open the context map: type `/context` in the prompt, use `ctrl+p` and search "Open context map", press `ctrl+g`, or click `open` in the Context Map sidebar block.
-3. Navigate with `j`/`k`, switch tabs with `tab`
-4. Set a topic to Compressed with `3`, or Placeholder with `4`
-5. Switch to the Messages tab and hide a noisy message with `x`
-6. Close with `q` and keep chatting -- your choices persist
-
-### 3. Try blame lookup
-
-If using the seeded test repo:
-
-```
+```text
+/context
 /blame src/auth/rate_limiter.ts:42
 ```
 
-This resolves the git blame to a historical session, shows the topic map, and lets you zoom in with `1`/`2`. Press `a` to queue an agent investigation in the current chat: the agent uses the current conversation as task context, investigates the blamed historical session with `blame_lookup`/zoom tools, and brings back a short relation paragraph with evidence.
+## Use In A Real Project
 
-## Keyboard reference
-
-### /context dialog
-
-| Key | Topics tab | Messages tab |
-|---|---|---|
-| `j`/`k` | Move selection | Move selection |
-| `tab` | Switch to Messages | Switch to Topics |
-| `1`-`5` | Set fidelity (Full/Summary/Compressed/Placeholder/Drop) | -- |
-| `x` | -- | Toggle hide |
-| `a` | -- | Set to Auto (follow topic) |
-| `f` | -- | Force full |
-| `s` | -- | Force summary |
-| `q` | Close | Close |
-
-### /blame dialog
-
-| Key | Action |
-|---|---|
-| `j`/`k` | Move between topics |
-| `1`/`2` | Zoom: Summary / Full |
-| `a` | Ask the current agent to relate this blamed line to the current task |
-| `q` | Close |
-
-## Agent tools
-
-The agent has these tools available (registered by the server plugin):
-
-| Tool | Purpose |
-|---|---|
-| `view_context` | Inspect the current map |
-| `set_fidelity` | Change a topic's fidelity, including dropping it from context; respects your overrides |
-| `session_lookup` | Search historical sessions by keyword |
-| `session_detail` | Inspect a historical topic as a compressed summary, per-message summaries, or full transcript |
-| `message_detail` | Fetch one full historical message after narrowing with `session_detail` |
-| `blame_lookup` | Map file:line via git blame to a historical session |
-
-Your fidelity choices are always authoritative. The agent cannot override them without explicitly using `force`.
-
-## Installing on a real project
-
-The plugin is not auto-loaded. To enable it on a project:
+The plugin is not packaged yet. For local testing, link the source files into a project's OpenCode plugin directory:
 
 ```sh
 mkdir -p .opencode/plugins
@@ -141,30 +68,28 @@ Then add `.opencode/tui.json`:
 }
 ```
 
-To disable, remove the symlinks and the tui.json entry.
-
 ## Development
 
 ```sh
-npm install
-npm run typecheck          # type check
-npm test                   # unit tests
-npm run validate:sandbox   # end-to-end plugin validation
-npm run validate:long-session  # 12-turn mixed-topic session
-npm run evaluate:compaction    # map-guided vs default compaction
-npm run setup:test-env     # create disposable manual test repo
+npm run typecheck
+npm test
+npm run validate:sandbox
+npm run validate:long-session
 ```
 
-## Project structure
+Live validation and benchmarks require an OpenCode-accessible model:
 
-```
-src/
-  types.ts           # Sideband JSON schema and annotation types
-  storage.ts         # Read/write context map and commit map files
-  core.ts            # Annotation parsing, fidelity transforms, map operations
-  git.ts             # Git hook installation for commit-to-session mapping
-  server-plugin.ts   # Server plugin (hooks + tools)
-  tui-plugin.tsx     # TUI plugin (sidebar + /context + /blame)
+```sh
+export MEM_MOULD_E2E_MODEL="<provider>/<model>"
 ```
 
-Sideband data lives at `~/.opencode/context-maps/<session-id>.json`.
+## Repo Shape
+
+- `src/`: plugin code.
+- `test/`: unit tests.
+- `tools/`: validation, fixture generation, inspection, and artifact export scripts.
+- `benchmarks/`: benchmark harnesses.
+- `artifacts/benchmark-runs/`: curated exported benchmark evidence.
+- `fixtures/`: small seeded demo/validation data.
+
+Sideband context maps are written to `~/.opencode/context-maps/<session-id>.json`.

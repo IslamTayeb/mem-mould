@@ -21,8 +21,6 @@
     "src/**/*.tsx",
     "benchmarks/**/*.ts",
     "tools/**/*.ts",
-    "artifacts/export.ts",
-    "test/**/*.ts",
-    "notes/experiments/**/*.ts"
+    "test/**/*.ts"
   ]
 }

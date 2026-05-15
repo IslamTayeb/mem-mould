@@ -7,8 +7,9 @@ The success target is not leaderboard score. A canary passes when default OpenCo
 ## Run
 
 ```sh
-MEM_MOULD_E2E_MODEL="openai/gpt-5.5" bun run benchmark:context-canaries -- --prepare-only
-MEM_MOULD_E2E_MODEL="openai/gpt-5.5" bun run benchmark:context-canaries
+export MEM_MOULD_E2E_MODEL="<provider>/<model>"
+bun run benchmark:context-canaries -- --prepare-only
+bun run benchmark:context-canaries
 ```
 
 Useful options:

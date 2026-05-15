@@ -8,6 +8,8 @@ import { promisify } from "node:util";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 
+import { parseModelSlug, requiredModelSlug } from "../../tools/model";
+
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(process.cwd());
 const defaultOutDir = path.join(
@@ -31,7 +33,6 @@ type MemoryRole =
   | "missing"
   | "correction"
   | "synthesis";
-type ModelRef = { providerID: string; modelID: string };
 
 type Options = {
   conditions: ConditionID[];
@@ -542,16 +543,16 @@ const fixtures: CodeFixture[] = [
     ],
     testCommand: ["node", "--test"],
     expectedTouchedFiles: ["src/pagination.mjs"],
-    forbiddenPatchTerms: ["cursor", "graphql", "opaque token"],
-    forbiddenOutputTerms: ["cursor", "graphql", "opaque token"],
+    forbiddenPatchTerms: ["graphql", "opaque token"],
+    forbiddenOutputTerms: ["graphql", "opaque token"],
     distractors: [
       {
-        sessionID: "cursor_pagination_session",
-        title: "Cursor pagination API note",
+        sessionID: "token_pagination_session",
+        title: "Token pagination API note",
         messages: [
           {
-            id: "cursor_pagination_fact_1",
-            text: "Cursor pagination uses opaque tokens and intentionally avoids total page counts for streaming APIs.",
+            id: "token_pagination_fact_1",
+            text: "Token pagination uses opaque tokens and intentionally avoids total page counts for streaming APIs.",
           },
         ],
       },
@@ -1030,7 +1031,7 @@ function parseOptions(): Options {
     conditions: selectedConditions,
     fixtures: selectedFixtures,
     outDir: path.resolve(valueArg(args, "--out") ?? defaultOutDir),
-    modelSlug: modelArg ?? process.env.MEM_MOULD_E2E_MODEL ?? "openai/gpt-5.5",
+    modelSlug: requiredModelSlug(modelArg, { cliFlag: "--model" }),
     promptTimeoutMs: timeoutMinutes * 60_000,
     repeats,
     workers,
@@ -1378,15 +1379,6 @@ async function pickModel(
     requested.modelID in provider.models,
     `model is not available: ${requested.providerID}/${requested.modelID}`,
   );
-}
-
-function parseModelSlug(modelSlug: string): ModelRef {
-  const index = modelSlug.indexOf("/");
-  assert.ok(index > 0, `model must be provider/model, got: ${modelSlug}`);
-  return {
-    providerID: modelSlug.slice(0, index),
-    modelID: modelSlug.slice(index + 1),
-  };
 }
 
 async function seedHistoricalSessions(

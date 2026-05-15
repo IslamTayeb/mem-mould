@@ -8,12 +8,13 @@ import { promisify } from "node:util";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 
-const execFileAsync = promisify(execFile);
+import {
+  parseModelSlug,
+  requiredModelSlug,
+  type ModelRef,
+} from "../../tools/model";
 
-type ModelRef = {
-  providerID: string;
-  modelID: string;
-};
+const execFileAsync = promisify(execFile);
 
 type SwebenchInstance = {
   instance_id: string;
@@ -414,7 +415,7 @@ async function parseOptions(): Promise<Options> {
   const args = process.argv.slice(2);
   const dataset = valueArg(args, "--dataset") ?? "SWE-bench/SWE-bench_Verified";
   const split = valueArg(args, "--split") ?? "test";
-  const modelSlug = process.env.MEM_MOULD_E2E_MODEL ?? "openai/gpt-5.5";
+  const modelSlug = requiredModelSlug();
   const outDir = path.resolve(valueArg(args, "--out") ?? defaultOutDir);
   const analyzeRun = valueArg(args, "--analyze-run");
   const instanceArg =
@@ -1012,15 +1013,6 @@ async function pickModel(
     `model is not available: ${requested.providerID}/${requested.modelID}`,
   );
   return requested;
-}
-
-function parseModelSlug(modelSlug: string): ModelRef {
-  const index = modelSlug.indexOf("/");
-  assert.ok(index > 0, `model must be provider/model, got: ${modelSlug}`);
-  return {
-    providerID: modelSlug.slice(0, index),
-    modelID: modelSlug.slice(index + 1),
-  };
 }
 
 async function createSession(

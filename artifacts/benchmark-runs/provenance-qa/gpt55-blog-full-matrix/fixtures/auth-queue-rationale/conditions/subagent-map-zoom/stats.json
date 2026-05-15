@@ -1,5 +1,0 @@
-{
-  "fixture": "auth-queue-rationale",
-  "condition": "subagent-map-zoom",
-  "error": "Error: timed out waiting for assistant message in ses_1e1ca82c1ffeBzhviic5jRS96s\n    at waitForAssistantMessage (./benchmarks/provenance-qa/blog-run.ts:1311:9)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async prompt (./benchmarks/provenance-qa/blog-run.ts:1280:10)\n    at async runFixtureCondition (./benchmarks/provenance-qa/blog-run.ts:712:5)\n    at async main (./benchmarks/provenance-qa/blog-run.ts:645:22)"
-}

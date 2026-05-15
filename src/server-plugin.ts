@@ -846,7 +846,6 @@ const server: Plugin = async (ctx) => {
         : ((await persistCoverage(sessionID, currentMessages)) ??
           (await getMap(sessionID)));
 
-      // Snapshot blob fidelities before transform
       const blobFidelities = Object.fromEntries(
         map.blobOrder.map((id) => [id, map.blobs[id]?.fidelity]),
       );

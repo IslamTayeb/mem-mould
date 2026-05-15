@@ -9,12 +9,9 @@ import { pathToFileURL } from "node:url";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 
-const execFileAsync = promisify(execFile);
+import { parseModelSlug, requiredModelSlug, type ModelRef } from "../model";
 
-type ModelRef = {
-  providerID: string;
-  modelID: string;
-};
+const execFileAsync = promisify(execFile);
 
 type SessionMessage = {
   info?: {
@@ -33,7 +30,7 @@ type SessionMessage = {
   }>;
 };
 
-const validationModelSlug = process.env.MEM_MOULD_E2E_MODEL ?? "openai/gpt-5.5";
+const validationModelSlug = requiredModelSlug();
 
 async function main() {
   const repoRoot = path.resolve(process.cwd());
@@ -396,15 +393,6 @@ async function pickModel(
     `model is not available: ${requested.providerID}/${requested.modelID}`,
   );
   return requested;
-}
-
-function parseModelSlug(modelSlug: string): ModelRef {
-  const index = modelSlug.indexOf("/");
-  assert.ok(index > 0, `model must be provider/model, got: ${modelSlug}`);
-  return {
-    providerID: modelSlug.slice(0, index),
-    modelID: modelSlug.slice(index + 1),
-  };
 }
 
 async function createSession(

@@ -1,6 +1,0 @@
-{
-  "passed": true,
-  "exitCode": 0,
-  "stdout": "✔ different tenants refresh independently (15.967042ms)\n✔ same tenant refresh calls coalesce (5.451375ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 87.400625\n",
-  "stderr": ""
-}

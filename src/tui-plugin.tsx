@@ -6,197 +6,39 @@ import type {
   TuiPluginApi,
   TuiPluginModule,
 } from "@opencode-ai/plugin/tui";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 
 import {
-  buildHistoricalOverview,
   buildSessionZoomText,
-  buildFallbackMapFromMessages,
   computeContextPreview,
   formatTokens,
   updateBlobFidelity,
   updateMessageControls,
 } from "./core";
-import { readCommitMap, readContextMap, writeContextMap } from "./storage";
-import type {
-  BlobEntry,
-  BlobFidelity,
-  ContextMapFile,
-  ContextPreview,
-  HistoricalSessionOverview,
-  MessageEntry,
-  MessageLike,
-} from "./types";
+import { writeContextMap } from "./storage";
+import { askAgentAboutBlame, runBlame, type HistoryState } from "./tui-blame";
+import {
+  BLOB_FIDELITY_LABEL,
+  FIDELITY_SHORT,
+  USER_SELECTABLE_BLOB_FIDELITIES,
+  color,
+  currentSession,
+  ensureHistorical,
+  flatMessages,
+  groupedSections,
+  keybindPrint,
+  loadMap,
+  orderedBlobs,
+  relTime,
+  sectionColor,
+  toMessageLikes,
+  trim,
+} from "./tui-helpers";
+import type { BlobEntry, BlobFidelity, ContextMapFile } from "./types";
 
 const PLUGIN_ID = "mem-mould.context-map-tui";
-const execFileAsync = promisify(execFile);
-
-const COLORS = [
-  "primary",
-  "secondary",
-  "accent",
-  "info",
-  "success",
-  "warning",
-  "error",
-] as const;
 
 type Tab = "blobs" | "messages";
-
-// ── Fidelity labels (user-facing) ──────────────────────────────────────
-
-// User-selectable fidelity levels (compressed hidden from UI)
-const BLOB_FIDELITY_KEYS: BlobFidelity[] = [
-  "full",
-  "summary",
-  "placeholder",
-  "drop",
-];
-const BLOB_FIDELITY_LABEL: Record<BlobFidelity, string> = {
-  full: "Full",
-  summary: "Summary",
-  compressed: "Compressed",
-  placeholder: "Placeholder",
-  drop: "Hidden",
-};
-const FIDELITY_SHORT: Record<BlobFidelity, string> = {
-  full: "Full",
-  summary: "Summ",
-  compressed: "Comp",
-  placeholder: "Plch",
-  drop: "Hide",
-};
-
-// ── Helpers ────────────────────────────────────────────────────────────
-
-function color(api: TuiPluginApi, i: number) {
-  return api.theme.current[COLORS[i % COLORS.length]];
-}
-
-function orderedBlobs(map?: ContextMapFile): BlobEntry[] {
-  if (!map) return [];
-  return map.blobOrder.map((id) => map.blobs[id]).filter(Boolean);
-}
-
-function orderedMessages(map?: ContextMapFile): MessageEntry[] {
-  if (!map) return [];
-  return Object.values(map.messages).sort((a, b) => a.createdAt - b.createdAt);
-}
-
-type Section = {
-  blobID?: string;
-  label: string;
-  fidelity?: BlobFidelity;
-  count: number;
-  tokens: number;
-  messages: MessageEntry[];
-};
-
-function groupedSections(map?: ContextMapFile): Section[] {
-  if (!map) return [];
-  const byBlob = new Map<string, MessageEntry[]>();
-  const loose: MessageEntry[] = [];
-  for (const msg of orderedMessages(map)) {
-    if (msg.blobID && map.blobs[msg.blobID]) {
-      const list = byBlob.get(msg.blobID) ?? [];
-      list.push(msg);
-      byBlob.set(msg.blobID, list);
-    } else {
-      loose.push(msg);
-    }
-  }
-  const sections: Section[] = map.blobOrder
-    .map((id) => {
-      const blob = map.blobs[id];
-      if (!blob) return undefined;
-      const msgs = byBlob.get(id) ?? [];
-      if (msgs.length === 0) return undefined;
-      return {
-        blobID: id,
-        label: blob.label,
-        fidelity: blob.fidelity,
-        count: msgs.length,
-        tokens: msgs.reduce((s, m) => s + m.tokenEstimate, 0),
-        messages: msgs,
-      } satisfies Section;
-    })
-    .filter(Boolean) as Section[];
-  if (loose.length > 0) {
-    sections.push({
-      label: "Unassigned",
-      count: loose.length,
-      tokens: loose.reduce((s, m) => s + m.tokenEstimate, 0),
-      messages: loose,
-    });
-  }
-  return sections;
-}
-
-function flatMessages(sections: Section[]) {
-  return sections.flatMap((s) => s.messages);
-}
-
-function sectionColor(map: ContextMapFile | undefined, s: Section) {
-  if (!map || !s.blobID) return 0;
-  const i = map.blobOrder.indexOf(s.blobID);
-  return i === -1 ? map.blobOrder.length : i;
-}
-
-function relTime(ts?: number) {
-  if (!ts) return "";
-  const d = Math.max(0, Date.now() - ts);
-  if (d < 60_000) return "now";
-  if (d < 3_600_000) return `${Math.round(d / 60_000)}m`;
-  if (d < 86_400_000) return `${Math.round(d / 3_600_000)}h`;
-  return `${Math.round(d / 86_400_000)}d`;
-}
-
-function trim(text: string, max: number) {
-  return text.length <= max ? text : `${text.slice(0, max - 1)}\u2026`;
-}
-
-function keybindPrint(api: TuiPluginApi, key: string) {
-  return (api as any).keybind?.print?.(key) as string | undefined;
-}
-
-async function loadMap(api: TuiPluginApi, sessionID: string) {
-  return readContextMap({
-    sessionID,
-    directory: api.state.path.directory,
-    worktree: api.state.path.worktree,
-  });
-}
-
-async function ensureHistorical(api: TuiPluginApi, sessionID: string) {
-  let map = await readContextMap({
-    sessionID,
-    directory: api.state.path.directory,
-    worktree: api.state.path.worktree,
-  });
-  if (map.blobOrder.length > 0 || Object.keys(map.messages).length > 0)
-    return map;
-  const raw =
-    (
-      (await api.client.session.messages({
-        sessionID,
-        directory: api.state.path.directory,
-        limit: 5000,
-      })) as any
-    )?.data ?? [];
-  if (!Array.isArray(raw) || raw.length === 0) return map;
-  map = buildFallbackMapFromMessages({
-    sessionID,
-    directory: api.state.path.directory,
-    worktree: api.state.path.worktree,
-    messages: raw as MessageLike[],
-  });
-  await writeContextMap(map);
-  return map;
-}
-
-// ── Context bar (shared between sidebar and dialogs) ──────────────────
 
 function ContextBar(props: { api: TuiPluginApi; map?: ContextMapFile }) {
   const preview = createMemo(() =>
@@ -235,8 +77,6 @@ function ContextBar(props: { api: TuiPluginApi; map?: ContextMapFile }) {
   );
 }
 
-// ── Sidebar widget ────────────────────────────────────────────────────
-
 function SidebarView(props: {
   api: TuiPluginApi;
   sessionID: string;
@@ -258,7 +98,6 @@ function SidebarView(props: {
   const dialogOpen = createMemo(() => props.api.ui.dialog.open);
   createEffect(() => {
     mc();
-    // Also reload when dialog closes (user may have changed fidelity)
     dialogOpen();
     void loadMap(props.api, props.sessionID).then(setMap);
   });
@@ -272,26 +111,17 @@ function SidebarView(props: {
     const msgs = props.api.state.session.messages(props.sessionID);
     const last = [...msgs]
       .reverse()
-      .find(
-        (m) =>
-          m.role === "assistant" &&
-          (m as any).tokens &&
-          (m as any).tokens.output > 0,
-      ) as
-      | { providerID?: string; modelID?: string; tokens?: { output: number } }
-      | undefined;
+      .find((m) => m.role === "assistant" && m.tokens.output > 0);
+    if (last?.role !== "assistant") return 0;
     if (!last?.providerID || !last?.modelID) return 0;
     const provider = props.api.state.provider.find(
       (p) => p.id === last.providerID,
     );
-    const model = provider?.models?.[last.modelID!] as
-      | { limit?: { context?: number } }
-      | undefined;
-    return model?.limit?.context ?? 0;
+    return provider?.models[last.modelID]?.limit.context ?? 0;
   });
 
   const blobs = createMemo(() => orderedBlobs(map()));
-  const barW = 34; // fits 37-char sidebar content width
+  const sidebarBarWidth = 34;
 
   return (
     <box flexDirection="column" gap={1}>
@@ -299,7 +129,6 @@ function SidebarView(props: {
         <text fg={props.api.theme.current.text}>
           <b>Context Map</b>
         </text>
-        {/* Post-transform context bar */}
         <Show when={preview()}>
           <box flexDirection="column">
             <box flexDirection="row">
@@ -309,7 +138,7 @@ function SidebarView(props: {
                     b.effectiveTokens / Math.max(1, preview()!.totalEffective);
                   const w = Math.max(
                     b.effectiveTokens > 0 ? 1 : 0,
-                    Math.round(pct * barW),
+                    Math.round(pct * sidebarBarWidth),
                   );
                   return (
                     <text fg={color(props.api, i())}>{"\u2588".repeat(w)}</text>
@@ -318,12 +147,11 @@ function SidebarView(props: {
               </For>
               <Show when={preview()!.totalEffective === 0}>
                 <text fg={props.api.theme.current.textMuted}>
-                  {"\u2591".repeat(barW)}
+                  {"\u2591".repeat(sidebarBarWidth)}
                 </text>
               </Show>
             </box>
 
-            {/* Per-blob one-liner */}
             <For each={preview()!.blobs}>
               {(b, i) => (
                 <text fg={props.api.theme.current.textMuted}>
@@ -334,7 +162,6 @@ function SidebarView(props: {
               )}
             </For>
 
-            {/* Context usage */}
             <text fg={props.api.theme.current.textMuted}>
               {"~"}
               {formatTokens(preview()!.totalEffective)}
@@ -356,8 +183,6 @@ function SidebarView(props: {
   );
 }
 
-// ── Main dialog (/context) ────────────────────────────────────────────
-
 function MemMapDialog(props: {
   api: TuiPluginApi;
   sessionID: string;
@@ -365,8 +190,8 @@ function MemMapDialog(props: {
 }) {
   const [map, setMap] = createSignal<ContextMapFile>();
   const [tab, setTab] = createSignal<Tab>("blobs");
-  const [bi, setBi] = createSignal(0); // blob index
-  const [mi, setMi] = createSignal(0); // message index
+  const [bi, setBi] = createSignal(0);
+  const [mi, setMi] = createSignal(0);
   const mc = createMemo(
     () => props.api.state.session.messages(props.sessionID).length,
   );
@@ -516,16 +341,13 @@ function MemMapDialog(props: {
       }
     }
     if (tab() === "messages") {
-      // Disable per-message controls when blob is placeholder/drop
       const curBlobEntry = curMsg()?.blobID
         ? map()?.blobs[curMsg()!.blobID!]
         : undefined;
       if (
-        curBlobEntry?.fidelity === "placeholder" ||
-        curBlobEntry?.fidelity === "drop"
+        curBlobEntry?.fidelity !== "placeholder" &&
+        curBlobEntry?.fidelity !== "drop"
       ) {
-        // Only allow navigation, not modification
-      } else {
         if (evt.name === "x") {
           stop();
           void patchMsg("hide");
@@ -548,12 +370,10 @@ function MemMapDialog(props: {
         }
       }
     }
-    // Don't swallow unhandled keys -- let them reach the app
   });
 
   const t = () => props.api.theme.current;
 
-  // Compute effective tokens for a blob at its current fidelity
   const preview = createMemo(() => {
     const m = map();
     return m ? computeContextPreview(m) : undefined;
@@ -564,7 +384,6 @@ function MemMapDialog(props: {
     return p.blobs.find((b) => b.id === blobID)?.effectiveTokens ?? 0;
   };
 
-  // Override-aware fidelity label: [Summary +2 full] or [Full +1 hidden]
   const blobFidelityTag = (blob: BlobEntry) => {
     const m = map();
     if (!m) return `[${BLOB_FIDELITY_LABEL[blob.fidelity]}]`;
@@ -582,7 +401,6 @@ function MemMapDialog(props: {
     return parts.length > 0 ? `[${base} ${parts.join(" ")}]` : `[${base}]`;
   };
 
-  // Is the current blob in a collapsed state where per-message controls don't apply?
   const blobIsCollapsed = (blob?: BlobEntry) =>
     blob?.fidelity === "placeholder" || blob?.fidelity === "drop";
 
@@ -598,7 +416,6 @@ function MemMapDialog(props: {
       </text>
       <ContextBar api={props.api} map={map()} />
 
-      {/* Tab bar */}
       <box flexDirection="row" gap={2} paddingTop={1}>
         <box
           backgroundColor={tab() === "blobs" ? t().accent : t().border}
@@ -626,7 +443,6 @@ function MemMapDialog(props: {
         <text fg={t().textMuted}>tab to switch</text>
       </box>
 
-      {/* Blobs tab */}
       <Show when={tab() === "blobs"}>
         <Show
           when={blobs().length > 0}
@@ -682,7 +498,7 @@ function MemMapDialog(props: {
                       <text fg={t().textMuted}> {blob.placeholder}</text>
                       <Show when={sel()}>
                         <box flexDirection="row" gap={1} paddingLeft={2}>
-                          <For each={BLOB_FIDELITY_KEYS}>
+                          <For each={USER_SELECTABLE_BLOB_FIDELITIES}>
                             {(f, fi) => (
                               <box
                                 backgroundColor={
@@ -716,7 +532,6 @@ function MemMapDialog(props: {
         <text fg={t().textMuted}>j/k navigate 1-4 set fidelity q close</text>
       </Show>
 
-      {/* Messages tab */}
       <Show when={tab() === "messages"}>
         <Show
           when={secs().length > 0}
@@ -886,16 +701,6 @@ function MemMapDialog(props: {
   );
 }
 
-// ── History dialog (/blame) ───────────────────────────────────────────
-
-type HistoryState = {
-  file: string;
-  line: number;
-  commitHash?: string;
-  sessionID: string;
-  overview: HistoricalSessionOverview;
-};
-
 function HistoryDialog(props: {
   api: TuiPluginApi;
   history: HistoryState;
@@ -924,18 +729,18 @@ function HistoryDialog(props: {
     }
     const raw =
       (
-        (await props.api.client.session.messages({
+        await props.api.client.session.messages({
           sessionID: props.history.sessionID,
           directory: props.api.state.path.directory,
           limit: 5000,
-        })) as any
+        })
       )?.data ?? [];
     setContent(
       buildSessionZoomText({
         map: m,
         blobID: b.id,
         fidelity: "full",
-        messages: raw as MessageLike[],
+        messages: toMessageLikes(raw),
       }),
     );
   };
@@ -985,7 +790,7 @@ function HistoryDialog(props: {
       void askAgentAboutBlame(props.api, props.currentSessionID, props.history)
         .then(() => {
           setAskStatus("Queued agent investigation in chat.");
-          (props.api as any).ui?.toast?.({
+          props.api.ui.toast({
             variant: "info",
             message: "Queued blame investigation in the current chat.",
           });
@@ -995,14 +800,13 @@ function HistoryDialog(props: {
           const message =
             error instanceof Error ? error.message : String(error);
           setAskStatus(message);
-          (props.api as any).ui?.toast?.({
+          props.api.ui.toast({
             variant: "error",
             message,
           });
         });
       return;
     }
-    // Don't swallow unhandled keys
   });
 
   const t = () => props.api.theme.current;
@@ -1103,123 +907,21 @@ function HistoryDialog(props: {
   );
 }
 
-async function askAgentAboutBlame(
-  api: TuiPluginApi,
-  currentSessionID: string | undefined,
-  history: HistoryState,
-) {
-  if (!currentSessionID) throw new Error("No active chat session to update.");
-  const text = buildBlameAgentPrompt(history);
-  const session = (api.client as any).session;
-  const send = session?.promptAsync ?? session?.prompt;
-  if (!send)
-    throw new Error("This OpenCode SDK does not expose session.prompt.");
-  await send.call(session, {
-    sessionID: currentSessionID,
-    directory: api.state.path.directory,
-    tools: {
-      task: true,
-      blame_lookup: true,
-      session_lookup: true,
-      session_detail: true,
-      message_detail: true,
-    },
-    parts: [
-      {
-        type: "text",
-        text,
-      },
-    ],
-  });
-}
-
-function buildBlameAgentPrompt(history: HistoryState) {
-  const active = history.overview.blobs
-    .filter((blob) => blob.activeForCommit)
-    .map((blob) => `${blob.id} (${blob.label})`)
-    .join(", ");
-  return [
-    `Use blame provenance to relate ${history.file}:${history.line} to the current task in this chat.`,
-    "Treat the current chat history as the task context. Do not edit files.",
-    "Investigate the historical context behind the blamed line, preferably by delegating a focused Task sub-agent so the current chat does not absorb the old transcript.",
-    "The investigation path should use blame_lookup on the file and line, then session_detail with detail='messages' on the relevant blob, then message_detail for one supporting message if needed.",
-    "Return one concise paragraph explaining how the historical change is related or not related to the current task, followed by a short evidence citation with session_id, blob_id, and message_id when available.",
-    "Known /blame UI hint:",
-    `- file: ${history.file}`,
-    `- line: ${history.line}`,
-    `- commit: ${history.commitHash ?? "unknown"}`,
-    `- mapped_session_id: ${history.sessionID}`,
-    `- active_blob_hint: ${active || "unknown"}`,
-  ].join("\n");
-}
-
-// ── Blame lookup helper ───────────────────────────────────────────────
-
-async function runBlame(
-  api: TuiPluginApi,
-  input: string,
-): Promise<HistoryState> {
-  const [file, lineText] = input.split(":");
-  const line = Number.parseInt(lineText ?? "", 10);
-  if (!file || !Number.isFinite(line) || line < 1)
-    throw new Error("Use file:line, for example src/auth.ts:42");
-  const { stdout } = await execFileAsync(
-    "git",
-    ["blame", "-L", `${line},${line}`, "--", file],
-    { cwd: api.state.path.worktree },
-  );
-  const hash = stdout.trim().split(/\s+/)[0];
-  if (!hash) throw new Error(`Could not resolve git blame for ${input}`);
-  const commits = await readCommitMap();
-  const entry = commits.entries[hash];
-  if (!entry) throw new Error(`No session mapping for commit ${hash}`);
-  const map = await ensureHistorical(api, entry.sessionID);
-  const session =
-    (
-      (await api.client.session.get({
-        sessionID: entry.sessionID,
-        directory: api.state.path.directory,
-      })) as any
-    )?.data ?? {};
-  return {
-    file,
-    line,
-    commitHash: hash,
-    sessionID: entry.sessionID,
-    overview: buildHistoricalOverview({
-      map,
-      session: session as any,
-      commitEntry: entry,
-      matchedBlobIDs: entry.activeBlobID ? [entry.activeBlobID] : [],
-    }),
-  };
-}
-
-// ── Plugin entry ──────────────────────────────────────────────────────
-
 const tui: TuiPlugin = async (api) => {
-  const keys = (api as any).keybind?.create?.({
+  const keys = api.keybind.create({
     plugin_context_open: "<leader>'",
   });
 
   const openMap = (sessionID?: string) => {
     const id = sessionID ?? currentSession(api);
     if (!id) {
-      (api as any).ui?.toast?.({
+      api.ui.toast({
         variant: "error",
         message: "No active session",
       });
       return;
     }
-    const dialog = (api as any).ui?.dialog;
-    if (!dialog) {
-      (api as any).ui?.toast?.({
-        variant: "error",
-        message:
-          "This OpenCode TUI version does not expose dialog APIs to plugins.",
-      });
-      return;
-    }
+    const dialog = api.ui.dialog;
     dialog.setSize("xlarge");
     dialog.replace(
       () => (
@@ -1232,16 +934,8 @@ const tui: TuiPlugin = async (api) => {
 
   const openBlame = () => {
     const current = currentSession(api);
-    const P = (api as any).ui?.DialogPrompt;
-    const dialog = (api as any).ui?.dialog;
-    if (!P || !dialog) {
-      (api as any).ui?.toast?.({
-        variant: "error",
-        message:
-          "This OpenCode TUI version does not expose dialog APIs to plugins.",
-      });
-      return;
-    }
+    const P = api.ui.DialogPrompt;
+    const dialog = api.ui.dialog;
     dialog.replace(() => (
       <P
         title="Blame lookup"
@@ -1265,7 +959,7 @@ const tui: TuiPlugin = async (api) => {
               queueMicrotask(() => dialog.setSize("xlarge"));
             })
             .catch((e) =>
-              (api as any).ui?.toast?.({
+              api.ui.toast({
                 variant: "error",
                 message: e instanceof Error ? e.message : String(e),
               }),
@@ -1276,56 +970,23 @@ const tui: TuiPlugin = async (api) => {
     ));
   };
 
-  const keymap = (api as any).keymap;
-  if (keymap?.registerLayer) {
-    keymap.registerLayer({
-      commands: [
-        {
-          name: "context-map.open",
-          title: "Open context map",
-          category: "Plugin",
-          desc: "Inspect and control context map fidelity",
-          namespace: "palette",
-          slashName: "context",
-          run: () => openMap(),
-        },
-        {
-          name: "context-map.blame",
-          title: "Blame lookup",
-          category: "Plugin",
-          desc: "Open context from the session that touched a file line",
-          namespace: "palette",
-          slashName: "blame",
-          run: () => openBlame(),
-        },
-      ],
-      bindings: [
-        {
-          key: "ctrl+g",
-          cmd: "context-map.open",
-          desc: "Open context map",
-        },
-      ],
-    });
-  } else {
-    (api as any).command?.register?.(() => [
-      {
-        title: "Open context map",
-        value: "context-map.open",
-        category: "Plugin",
-        keybind: keys?.get?.("plugin_context_open"),
-        slash: { name: "context" },
-        onSelect: () => openMap(),
-      },
-      {
-        title: "Blame lookup",
-        value: "context-map.blame",
-        category: "Plugin",
-        slash: { name: "blame" },
-        onSelect: () => openBlame(),
-      },
-    ]);
-  }
+  api.command.register(() => [
+    {
+      title: "Open context map",
+      value: "context-map.open",
+      category: "Plugin",
+      keybind: keys.get("plugin_context_open"),
+      slash: { name: "context" },
+      onSelect: () => openMap(),
+    },
+    {
+      title: "Blame lookup",
+      value: "context-map.blame",
+      category: "Plugin",
+      slash: { name: "blame" },
+      onSelect: () => openBlame(),
+    },
+  ]);
 
   api.slots.register({
     order: 110,
@@ -1342,15 +1003,8 @@ const tui: TuiPlugin = async (api) => {
     },
   });
 
-  (api as any).lifecycle?.onDispose?.(() => {});
+  api.lifecycle.onDispose(() => {});
 };
-
-function currentSession(api: TuiPluginApi) {
-  const c = (api as any).route?.current;
-  return c?.name === "session" && typeof c.params?.sessionID === "string"
-    ? c.params.sessionID
-    : undefined;
-}
 
 const plugin: TuiPluginModule = { id: PLUGIN_ID, tui };
 export default plugin;

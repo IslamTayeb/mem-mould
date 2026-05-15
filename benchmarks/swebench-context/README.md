@@ -6,9 +6,9 @@ This is not a SWE-bench leaderboard run. It is a blog-oriented stress test for l
 
 ## Conditions
 
-- `clean-no-plugin`: GPT-5.5 solves the SWE-bench task in a fresh OpenCode session with no mem-mould plugin.
-- `polluted-default-compact`: GPT-5.5 first receives a noisy unrelated coding-history prelude, then OpenCode default compaction is forced, then the SWE-bench task is solved without mem-mould.
-- `polluted-memmould-compact`: GPT-5.5 receives the same noisy prelude with mem-mould enabled, gets a chance to use `view_context` and `set_fidelity`, then compaction is forced and the SWE-bench task is solved.
+- `clean-no-plugin`: the selected model solves the SWE-bench task in a fresh OpenCode session with no mem-mould plugin.
+- `polluted-default-compact`: the selected model first receives a noisy unrelated coding-history prelude, then OpenCode default compaction is forced, then the SWE-bench task is solved without mem-mould.
+- `polluted-memmould-compact`: the selected model receives the same noisy prelude with mem-mould enabled, gets a chance to use `view_context` and `set_fidelity`, then compaction is forced and the SWE-bench task is solved.
 - `polluted-memmould-boundary-compact`: same as mem-mould compact, but the cleanup turn declares a hard task boundary and asks old auth/docs/test blobs to be dropped.
 - `polluted-memmould-cache-stable-boundary-compact`: boundary mode plus cache-stable mem-mould settings. Dynamic annotation/guidance prompts are suppressed, placeholder text/anchors are stable, compaction summaries are hidden as placeholders, and fallback-created current-task blobs stay full.
 
@@ -19,7 +19,8 @@ For cheaper hypothesis testing before SWE-bench runs, use `bun run benchmark:con
 ## Run
 
 ```sh
-MEM_MOULD_E2E_MODEL="openai/gpt-5.5" bun run benchmark:swebench-context -- --skip-eval
+export MEM_MOULD_E2E_MODEL="<provider>/<model>"
+bun run benchmark:swebench-context -- --skip-eval
 ```
 
 Useful options:
@@ -130,7 +131,7 @@ The default dataset is `SWE-bench/SWE-bench_Verified`, with a small harder start
 
 Fair claim:
 
-> The task and pass/fail grading came from SWE-bench. I changed the pre-task context to mimic a long-running agent session and compared the same GPT-5.5 agent with and without mem-mould.
+> The task and pass/fail grading came from SWE-bench. I changed the pre-task context to mimic a long-running agent session and compared the same selected model with and without mem-mould.
 
 Stronger claim only after canary evidence:
 

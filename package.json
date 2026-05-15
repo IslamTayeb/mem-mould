@@ -1,7 +1,12 @@
 {
   "name": "mem-mould-context-map-plugin",
   "private": true,
+  "description": "OpenCode context-map plugin prototype for LLM context visualization and navigation.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IslamTayeb/mem-mould.git"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/**/*.test.ts",
@@ -19,7 +24,7 @@
     "benchmark:code-memory": "node --import tsx benchmarks/code-memory/run.ts",
     "benchmark:provenance-qa": "node --import tsx benchmarks/provenance-qa/run.ts",
     "benchmark:provenance-blog": "node --import tsx benchmarks/provenance-qa/blog-run.ts",
-    "artifacts:export": "node --import tsx artifacts/export.ts"
+    "artifacts:export": "node --import tsx tools/artifacts/export.ts"
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.3.6",

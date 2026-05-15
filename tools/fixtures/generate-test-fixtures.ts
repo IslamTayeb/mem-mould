@@ -8,6 +8,8 @@ import { pathToFileURL } from "node:url";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 
+import { MODEL_ENV_VAR, parseModelSlug } from "../model";
+
 const execFileAsync = promisify(execFile);
 
 // ── Main ──────────────────────────────────────────────────────────────
@@ -152,6 +154,9 @@ async function main() {
   // Collect all SQL statements to batch-insert
   const stmts: string[] = [];
   let totalMsgs = 0;
+  const fixtureModel = parseModelSlug(
+    process.env[MODEL_ENV_VAR]?.trim() || "fixture/demo-model",
+  );
 
   // Demo file snippets for realistic tool output
   const fileSnippets: Record<string, string> = {
@@ -563,13 +568,13 @@ async function main() {
       };
       if (msg.role === "user") {
         msgData.model = {
-          providerID: "amazon-bedrock",
-          modelID: "global.anthropic.claude-sonnet-4-6",
+          providerID: fixtureModel.providerID,
+          modelID: fixtureModel.modelID,
         };
       } else {
         msgData.parentID = lastUserMsgID;
-        msgData.modelID = "global.anthropic.claude-sonnet-4-6";
-        msgData.providerID = "amazon-bedrock";
+        msgData.modelID = fixtureModel.modelID;
+        msgData.providerID = fixtureModel.providerID;
         msgData.mode = "code";
         msgData.path = { cwd: repo, root: repo };
         msgData.cost = 0.003;

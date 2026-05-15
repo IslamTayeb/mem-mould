@@ -7,12 +7,13 @@ import { promisify } from "node:util";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 
-const execFileAsync = promisify(execFile);
+import {
+  parseModelSlug,
+  requiredModelSlug,
+  type ModelRef,
+} from "../../tools/model";
 
-type ModelRef = {
-  providerID: string;
-  modelID: string;
-};
+const execFileAsync = promisify(execFile);
 
 type SessionMessage = {
   info?: {
@@ -450,7 +451,7 @@ function parseOptions(): Options {
     conditions: conditionsList,
     canaries: canaryList,
     outDir: path.resolve(valueArg(args, "--out") ?? defaultOutDir),
-    modelSlug: process.env.MEM_MOULD_E2E_MODEL ?? "openai/gpt-5.5",
+    modelSlug: requiredModelSlug(),
     promptTimeoutMs: timeoutMinutes * 60_000,
     prepareOnly: hasArg(args, "--prepare-only"),
     keepWorktrees: hasArg(args, "--keep-worktrees"),
@@ -475,15 +476,6 @@ function splitList(value: string) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function parseModelSlug(modelSlug: string): ModelRef {
-  const index = modelSlug.indexOf("/");
-  assert.ok(index > 0, `model must be provider/model, got: ${modelSlug}`);
-  return {
-    providerID: modelSlug.slice(0, index),
-    modelID: modelSlug.slice(index + 1),
-  };
 }
 
 async function prepareFixtureRepo(worktree: string) {
@@ -578,17 +570,6 @@ async function buildOpenCodeEnv(input: {
     plugins.push(
       pathToFileURL(path.join(repoRoot, "src", "server-plugin.ts")).href,
     );
-  }
-  if (input.modelSlug.startsWith("cursor/")) {
-    plugins.push("opencode-cursor-oauth");
-    const modelID = input.modelSlug.slice("cursor/".length);
-    config.provider = {
-      cursor: {
-        name: "Cursor",
-        npm: "@ai-sdk/openai-compatible",
-        models: { [modelID]: { name: modelID } },
-      },
-    };
   }
   if (plugins.length > 0) config.plugin = plugins;
   return {

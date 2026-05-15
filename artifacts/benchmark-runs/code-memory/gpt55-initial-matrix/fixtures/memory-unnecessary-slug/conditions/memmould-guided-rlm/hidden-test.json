@@ -1,6 +1,0 @@
-{
-  "passed": true,
-  "exitCode": 0,
-  "stdout": "✔ normalizes punctuation and repeated separators (0.680334ms)\n✔ normalizes user-facing titles (0.67325ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 77.074875\n",
-  "stderr": ""
-}

@@ -5,14 +5,10 @@ This benchmark tests whether prior session memory helps, hurts, or should be ign
 ## Run
 
 ```sh
-MEM_MOULD_E2E_MODEL="openai/gpt-5.5" bun run benchmark:code-memory -- --prepare-only
-MEM_MOULD_E2E_MODEL="openai/gpt-5.5" bun run benchmark:code-memory
-MEM_MOULD_E2E_MODEL="openai/gpt-5.3-codex-spark" bun run benchmark:code-memory -- --prepare-only
-bun run benchmark:code-memory -- --model openai/gpt-5.3-codex-spark --prepare-only
-MEM_MOULD_E2E_MODEL="amazon-bedrock/global.anthropic.claude-opus-4-7" \
-  AWS_REGION=us-east-1 \
-  AWS_BEARER_TOKEN_BEDROCK=REDACTED \
-  bun run benchmark:code-memory -- --fixtures memory-unnecessary-slug --conditions code-only --prompt-timeout-minutes 10
+export MEM_MOULD_E2E_MODEL="<provider>/<model>"
+bun run benchmark:code-memory -- --prepare-only
+bun run benchmark:code-memory
+bun run benchmark:code-memory -- --model "<provider>/<model>" --prepare-only
 ```
 
 Useful options:
@@ -20,9 +16,9 @@ Useful options:
 ```sh
 bun run benchmark:code-memory -- --fixtures memory-helpful-schema
 bun run benchmark:code-memory -- --conditions code-only,rlm-transcript-search,memmould-only,memmould-guided-rlm
-bun run benchmark:code-memory -- --combine-runs benchmarks/code-memory/runs/gpt55-initial-matrix,benchmarks/code-memory/runs/gpt55-memmould-only --out benchmarks/code-memory/runs/gpt55-ablation-combined
-bun run benchmark:code-memory -- --model openai/gpt-5.3-codex-spark --fixtures memory-helpful-schema --conditions code-only --repeats 1
-bun run benchmark:code-memory -- --repeats 3 --out benchmarks/code-memory/runs/gpt55-repeats
+bun run benchmark:code-memory -- --combine-runs benchmarks/code-memory/runs/run-a,benchmarks/code-memory/runs/run-b --out benchmarks/code-memory/runs/combined
+bun run benchmark:code-memory -- --model "<provider>/<model>" --fixtures memory-helpful-schema --conditions code-only --repeats 1
+bun run benchmark:code-memory -- --repeats 3 --out benchmarks/code-memory/runs/repeats
 bun run benchmark:code-memory -- --prompt-timeout-minutes 12
 bun run benchmark:code-memory -- --fixtures memory-unnecessary-slug --conditions code-only --workers 4
 bun run benchmark:code-memory -- --analyze-run benchmarks/code-memory/runs/<run>

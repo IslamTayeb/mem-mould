@@ -8,6 +8,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 
 import { buildCompactionPrompt } from "../../src/core";
 import type { ContextMapFile } from "../../src/types";
+import { parseModelSlug, requiredModelSlug, type ModelRef } from "../model";
 
 const DEFAULT_COMPACTION_PROMPT = `Provide a detailed prompt for continuing our conversation above.
 Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next.
@@ -38,12 +39,7 @@ When constructing the summary, try to stick to this template:
 [Construct a structured list of relevant files that have been read, edited, or created that pertain to the task at hand. If all the files in a directory are relevant, include the path to the directory.]
 ---`;
 
-type ModelRef = {
-  providerID: string;
-  modelID: string;
-};
-
-const validationModelSlug = process.env.MEM_MOULD_E2E_MODEL ?? "openai/gpt-5.5";
+const validationModelSlug = requiredModelSlug();
 
 async function main() {
   const repoRoot = path.resolve(process.cwd());
@@ -388,15 +384,6 @@ async function pickModel(
     `model is not available: ${requested.providerID}/${requested.modelID}`,
   );
   return requested;
-}
-
-function parseModelSlug(modelSlug: string): ModelRef {
-  const index = modelSlug.indexOf("/");
-  assert.ok(index > 0, `model must be provider/model, got: ${modelSlug}`);
-  return {
-    providerID: modelSlug.slice(0, index),
-    modelID: modelSlug.slice(index + 1),
-  };
 }
 
 void main().catch((error) => {

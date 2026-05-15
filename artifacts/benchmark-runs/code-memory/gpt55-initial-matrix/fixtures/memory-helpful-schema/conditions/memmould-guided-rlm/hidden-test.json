@@ -1,6 +1,0 @@
-{
-  "passed": true,
-  "exitCode": 0,
-  "stdout": "✔ keeps pipes inside quoted schema fields (1.226625ms)\n✔ trims simple schema fields (1.18225ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 74.86\n",
-  "stderr": ""
-}

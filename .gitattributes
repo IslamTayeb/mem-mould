@@ -1,1 +1,3 @@
-artifacts/benchmark-runs/** -whitespace
+artifacts/benchmark-runs/** linguist-generated=true -whitespace
+fixtures/*.bundle binary
+fixtures/*.sqlite* binary

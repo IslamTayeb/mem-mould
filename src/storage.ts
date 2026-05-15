@@ -188,8 +188,6 @@ async function writeJsonAtomic(filePath: string, value: unknown) {
   await fs.rename(tmpPath, filePath);
 }
 
-// ── Debug log ─────────────────────────────────────────────────────────
-
 export function debugLogPath(sessionID: string) {
   return path.join(contextMapRoot(), `${sessionID}.debug.json`);
 }
@@ -244,8 +242,6 @@ export async function writeDebugLog(
   await writeJsonAtomic(logPath, log);
 }
 
-// ── Trace log (append-only JSONL per session) ─────────────────────────
-
 export function traceLogPath(sessionID: string) {
   return path.join(contextMapRoot(), `${sessionID}.trace.jsonl`);
 }
@@ -264,7 +260,5 @@ export async function appendTrace(
       ...data,
     });
     await fs.appendFile(traceLogPath(sessionID), `${line}\n`);
-  } catch {
-    // trace logging is best-effort, never block the main flow
-  }
+  } catch {}
 }

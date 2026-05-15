@@ -7,6 +7,13 @@ import { promisify } from "node:util";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 
+import {
+  CHILD_MODEL_ENV_VAR,
+  optionalModelSlug,
+  parseModelSlug,
+  requiredModelSlug,
+} from "../../tools/model";
+
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(process.cwd());
 
@@ -18,8 +25,6 @@ type ConditionID =
   | "memmould-guided-rlm"
   | "subagent-memmould-guided-rlm"
   | "memmould-blame-lookup";
-
-type ModelRef = { providerID: string; modelID: string };
 
 type Options = {
   conditions: ConditionID[];
@@ -841,8 +846,8 @@ function parseOptions(): Options {
     conditions: selectedConditions,
     fixtures: selectedFixtures,
     outDir: path.resolve(valueArg(args, "--out") ?? defaultOutDir),
-    modelSlug: process.env.MEM_MOULD_E2E_MODEL ?? "openai/gpt-5.5",
-    childModelSlug: process.env.MEM_MOULD_E2E_CHILD_MODEL || undefined,
+    modelSlug: requiredModelSlug(),
+    childModelSlug: optionalModelSlug(CHILD_MODEL_ENV_VAR),
     promptTimeoutMs: timeoutMinutes * 60_000,
     prepareOnly: hasArg(args, "--prepare-only"),
     analyzeRun: analyzeRun ? path.resolve(analyzeRun) : undefined,
@@ -1236,15 +1241,6 @@ async function pickModel(
     requested.modelID in provider.models,
     `model is not available: ${requested.providerID}/${requested.modelID}`,
   );
-}
-
-function parseModelSlug(modelSlug: string): ModelRef {
-  const index = modelSlug.indexOf("/");
-  assert.ok(index > 0, `model must be provider/model, got: ${modelSlug}`);
-  return {
-    providerID: modelSlug.slice(0, index),
-    modelID: modelSlug.slice(index + 1),
-  };
 }
 
 async function seedHistoricalSessions(
