@@ -7,6 +7,8 @@
     "test": "node --import tsx --test test/**/*.test.ts",
     "test:watch": "node --import tsx --test --watch test/**/*.test.ts",
     "validate:sandbox": "node --import tsx tools/validation/validate-sandbox.ts",
+    "validate:blame-tui": "node --loader ./tools/validation/node-file-loader.mjs --import tsx tools/validation/validate-blame-tui.ts",
+    "validate:blame-tui-live": "node --import tsx tools/validation/validate-blame-tui-live.ts",
     "validate:long-session": "node --import tsx tools/validation/validate-long-session.ts",
     "evaluate:compaction": "node --import tsx tools/validation/evaluate-compaction.ts",
     "generate:fixtures": "node --import tsx tools/fixtures/generate-test-fixtures.ts",

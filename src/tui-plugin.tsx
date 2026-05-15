@@ -899,12 +899,14 @@ type HistoryState = {
 function HistoryDialog(props: {
   api: TuiPluginApi;
   history: HistoryState;
+  currentSessionID?: string;
   close: () => void;
 }) {
   const [bi, setBi] = createSignal(0);
   const [zoom, setZoom] = createSignal<"summary" | "full">("summary");
   const [content, setContent] = createSignal("");
   const [map, setMap] = createSignal<ContextMapFile>();
+  const [askStatus, setAskStatus] = createSignal<string>("");
 
   const blobs = createMemo(() => props.history.overview.blobs);
 
@@ -976,6 +978,28 @@ function HistoryDialog(props: {
     if (evt.name === "2") {
       stop();
       void load("full");
+      return;
+    }
+    if (evt.name === "a") {
+      stop();
+      void askAgentAboutBlame(props.api, props.currentSessionID, props.history)
+        .then(() => {
+          setAskStatus("Queued agent investigation in chat.");
+          (props.api as any).ui?.toast?.({
+            variant: "info",
+            message: "Queued blame investigation in the current chat.",
+          });
+          props.close();
+        })
+        .catch((error) => {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          setAskStatus(message);
+          (props.api as any).ui?.toast?.({
+            variant: "error",
+            message,
+          });
+        });
       return;
     }
     // Don't swallow unhandled keys
@@ -1069,9 +1093,64 @@ function HistoryDialog(props: {
           </scrollbox>
         </box>
       </box>
-      <text fg={t().textMuted}>j/k navigate 1 summary 2 full q close</text>
+      <Show when={askStatus()}>
+        <text fg={t().textMuted}>{askStatus()}</text>
+      </Show>
+      <text fg={t().textMuted}>
+        j/k navigate 1 summary 2 full a ask agent q close
+      </text>
     </box>
   );
+}
+
+async function askAgentAboutBlame(
+  api: TuiPluginApi,
+  currentSessionID: string | undefined,
+  history: HistoryState,
+) {
+  if (!currentSessionID) throw new Error("No active chat session to update.");
+  const text = buildBlameAgentPrompt(history);
+  const session = (api.client as any).session;
+  const send = session?.promptAsync ?? session?.prompt;
+  if (!send)
+    throw new Error("This OpenCode SDK does not expose session.prompt.");
+  await send.call(session, {
+    sessionID: currentSessionID,
+    directory: api.state.path.directory,
+    tools: {
+      task: true,
+      blame_lookup: true,
+      session_lookup: true,
+      session_detail: true,
+      message_detail: true,
+    },
+    parts: [
+      {
+        type: "text",
+        text,
+      },
+    ],
+  });
+}
+
+function buildBlameAgentPrompt(history: HistoryState) {
+  const active = history.overview.blobs
+    .filter((blob) => blob.activeForCommit)
+    .map((blob) => `${blob.id} (${blob.label})`)
+    .join(", ");
+  return [
+    `Use blame provenance to relate ${history.file}:${history.line} to the current task in this chat.`,
+    "Treat the current chat history as the task context. Do not edit files.",
+    "Investigate the historical context behind the blamed line, preferably by delegating a focused Task sub-agent so the current chat does not absorb the old transcript.",
+    "The investigation path should use blame_lookup on the file and line, then session_detail with detail='messages' on the relevant blob, then message_detail for one supporting message if needed.",
+    "Return one concise paragraph explaining how the historical change is related or not related to the current task, followed by a short evidence citation with session_id, blob_id, and message_id when available.",
+    "Known /blame UI hint:",
+    `- file: ${history.file}`,
+    `- line: ${history.line}`,
+    `- commit: ${history.commitHash ?? "unknown"}`,
+    `- mapped_session_id: ${history.sessionID}`,
+    `- active_blob_hint: ${active || "unknown"}`,
+  ].join("\n");
 }
 
 // ── Blame lookup helper ───────────────────────────────────────────────
@@ -1152,6 +1231,7 @@ const tui: TuiPlugin = async (api) => {
   };
 
   const openBlame = () => {
+    const current = currentSession(api);
     const P = (api as any).ui?.DialogPrompt;
     const dialog = (api as any).ui?.dialog;
     if (!P || !dialog) {
@@ -1176,6 +1256,7 @@ const tui: TuiPlugin = async (api) => {
                   <HistoryDialog
                     api={api}
                     history={h}
+                    currentSessionID={current}
                     close={() => dialog.clear()}
                   />
                 ),

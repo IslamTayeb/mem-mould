@@ -82,7 +82,7 @@ If using the seeded test repo:
 /blame src/auth/rate_limiter.ts:42
 ```
 
-This resolves the git blame to a historical session, shows the topic map, and lets you zoom in with `1`/`2`/`3`.
+This resolves the git blame to a historical session, shows the topic map, and lets you zoom in with `1`/`2`. Press `a` to queue an agent investigation in the current chat: the agent uses the current conversation as task context, investigates the blamed historical session with `blame_lookup`/zoom tools, and brings back a short relation paragraph with evidence.
 
 ## Keyboard reference
 
@@ -104,7 +104,8 @@ This resolves the git blame to a historical session, shows the topic map, and le
 | Key | Action |
 |---|---|
 | `j`/`k` | Move between topics |
-| `1`/`2`/`3` | Zoom: Placeholder / Compressed / Full |
+| `1`/`2` | Zoom: Summary / Full |
+| `a` | Ask the current agent to relate this blamed line to the current task |
 | `q` | Close |
 
 ## Agent tools
